@@ -54,36 +54,21 @@ std::vector<std::vector<containerType> > readFile(
   return std::move(data);
 }
 
-template<typename T>
-void plot_graph(
-  std::vector<T> &x,
-  std::vector<T> &y,
-  const char *chartTitle,
-  const char *xLabel,
-  const char *yLabel
-) {
-  // Plot the pose data
-  plt::figure_size(800, 800);
-  plt::plot(x, y, "b-o");
-  plt::xlabel(xLabel);
-  plt::ylabel(yLabel);
-  plt::title(chartTitle);
-  plt::grid(true);
-  plt::show();
-}
-
 std::ostream &operator<<(std::ostream &os, const pose_t &pose) {
-  os << "X: " << pose.x << " | Y: " << pose.y << " | Theta: " << pose.theta;
+  os << pose.x << "\t" << pose.y << "\t" << pose.theta;
   return os;
 }
 
 std::vector<float> x_data, y_data, theta_data;
+std::vector<pose_t> all_pose;
+
 void step(int ts, const encoder_ticks_t encoderTick) {
   robotOdom->m_update_pose(encoderTick);
   pose_t current_pose = robotOdom->get_current_pose();
   x_data.push_back(current_pose.x);
   y_data.push_back(current_pose.y);
   theta_data.push_back(current_pose.theta);
+  all_pose.push_back(current_pose);
 }
 
 int main(int argc, char **argv) {
@@ -97,21 +82,49 @@ int main(int argc, char **argv) {
   if (pos != std::string::npos) {
     path = path.substr(0, pos);
   }
-  path.append("/data/");
-  std::vector<std::vector<int> > motor_ticks = readFile<int>(
-    path.c_str(), "Unit A/robot4_motors.txt", std::vector<int>{1, 2, 6});
 
-  auto startingTick = motor_ticks.at(0);
-  encoder_ticks_t startingVal{
-    .left = static_cast<float>(startingTick.at(1)),
-    .right = static_cast<float>(startingTick.at(2))
-  };
+  //Read Motor Ticks
+  std::vector<std::vector<int> > motor_ticks = readFile<int>(
+    path.c_str(),
+    "/data/Unit A/robot4_motors.txt",
+    std::vector<int>{1, 2, 6});
+  //Read True Robot Position
+  std::vector<std::vector<float> > true_robot_position = readFile<float>(
+    path.c_str(),
+    "/data/Unit A/robot4_reference.txt",
+    std::vector<int>{2, 3});
+  std::vector<float> x_true, y_true, theta_true;
+  for (auto true_data: true_robot_position) {
+    x_true.push_back(true_data.at(0));
+    y_true.push_back(true_data.at(1));
+  }
+  //Read True Robot Position
+  std::vector<std::vector<int> > robot_lidar_data = readFile<int>(
+    path.c_str(),
+    "/data/Unit A/robot4_scan.txt",
+    std::vector<int>{2, 3});
+
+
+  //Initialize Robot Odometry
   robotOdom = std::make_unique<robot_odometry>(
     0.349F,
-    150.0F,
-    pose_t{0.0F, 0.0F, 0.0F},
-    startingVal);
+    173.0F,
+    pose_t{
+      1850.0F,
+      1897.0F,
+      (213.0F / 180.0F) * M_PI
+    },
+    encoder_ticks_t{
+      static_cast<float>(motor_ticks.at(0).at(1)),
+      static_cast<float>(motor_ticks.at(0).at(2))
+    },
+    pose_t{
+      0.0F,
+      0.0F,
+      0.0F
+    });
 
+  //Step The SLAM
   for (std::size_t i = 0; i < motor_ticks.size(); i++) {
     auto encoderReading = motor_ticks.at(i);
 
@@ -122,11 +135,30 @@ int main(int argc, char **argv) {
     };
     step(timeStep, encoderVal);
   }
-plot_graph(x_data,
-  y_data,
-  "Robot Pose",
-  "x (mm)",
-  "y (mm)");
+
+  //Save Motor Position to File
+  std::string pose_data = path;
+  pose_data.append("/results/pose_data.txt");
+  std::ofstream pose_data_file(pose_data, std::ios::app);
+  if (!pose_data_file.is_open()) {
+    std::cerr << "Failed to open file for writing." << std::endl;
+    return EXIT_FAILURE;
+  }
+  for (auto current_pose: all_pose) {
+    pose_data_file << "F\t" << current_pose << "\n";
+    // std::cout << current_pose << std::endl;
+  }
+  pose_data_file.close();
+
+  //Plot Graph
+  plt::figure_size(800, 800);
+  plt::plot(x_data, y_data, "b-o");
+  plt::plot(x_true, y_true, "r-o");
+  plt::xlabel("x (mm)");
+  plt::ylabel("y (mm)");
+  plt::title("Robot Pose");
+  plt::grid(true);
+  plt::show();
 
   return 0;
 }

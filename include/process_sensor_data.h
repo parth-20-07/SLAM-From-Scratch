@@ -1,18 +1,15 @@
 /**
  * @file process_sensor_data.h
- * @author Parth Patel (parth.pmech@gmail.com)
- * @brief
+ * @brief Header file for processing sensor data.
  * @version 0.1
  * @date 2024-06-06
- *
- * @copyright Copyright (c) 2024
- *
  */
 
 #ifndef PROCESS_SENSOR_DATA_H
 #define PROCESS_SENSOR_DATA_H
+
 #include <cstdint>
-#include<memory>
+#include <memory>
 #include <vector>
 
 typedef struct {
@@ -32,18 +29,16 @@ typedef struct {
 } encoder_ticks_t;
 
 /**
- * @brief
- * TODO: Implement Interface to feed data for SLAM
- *
+ * @brief Class for processing LIDAR data.
  */
 class lidar_data {
 private:
-    const std::size_t m_totalLidarDataPoints; // Angle Increment is assumed Uniform
-    const value_range_t m_scanDistance // Lidar Range
+    const std::size_t m_totalLidarDataPoints; // Total LIDAR data points
+    const value_range_t m_scanDistance // LIDAR scan distance range
     {
         .min{0.0F}, .max{0.0F}
     };
-    const value_range_t m_angleRange // Start and End Angle for LIDAR
+    const value_range_t m_angleRange // LIDAR angle range
     {
         .min{0.0F}, .max{360.0F}
     };
@@ -60,36 +55,34 @@ public:
 };
 
 /**
- * @brief
- * TODO: Implement Functionality for Robot Odometry
+ * @brief Class for robot odometry.
  */
 class robot_odometry {
 public:
     robot_odometry(
         float encoder_ticks_per_mm,
         float distance_between_wheels_in_mm,
-        pose_t starting_pose = pose_t{0.0F, 0.0F, 0.0F},
-        encoder_ticks_t starting_encoder_ticks = encoder_ticks_t{0.0F, 0.0F});
+        pose_t starting_pose,
+        encoder_ticks_t starting_encoder_ticks,
+        pose_t transform_to_another_frame);
 
     ~robot_odometry();
 
-    [[nodiscard]] pose_t get_current_pose() const { return this->m_robotPose; }
+    [[nodiscard]] pose_t get_current_pose() const;
 
-    void m_update_pose(encoder_ticks_t new_encoder_ticks); // Uses Encoder Ticks as Input
-    void m_update_pose(float x, float y, float theta); // Just reformats the pose in required format
+    void m_update_pose(encoder_ticks_t new_encoder_ticks); // Uses encoder ticks as input
+    void m_update_pose(float x, float y, float theta); // Reformats the pose in required format
 
 private:
     const float m_encoderTicksPerMillimeter;
     const float m_robotWidthBetweenWheels_millimeters;
-    // const float m_encoderNoise{0.05F};
-    // const float m_acceptableErrorInEncoder{0.1F};
     encoder_ticks_t m_currentEncoderTickValue;
     pose_t m_robotPose;
+    pose_t m_transformationMatrixToSwitchFrame;
 
 private:
     void m_calculate_motion(float dL, float dR);
-
-    /* ---------------------------- Member Variables ---------------------------- */
+    [[nodiscard]] pose_t transformFrame(pose_t currentPose) const; // Declaration without extra qualification
 };
 
 #endif // PROCESS_SENSOR_DATA_H
