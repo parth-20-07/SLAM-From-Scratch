@@ -1,4 +1,5 @@
-/**
+/**    plt::named_plot("processed lidar " + std::to_string(idx), processed_lidar_data.at(idx), "r");
+
  * @file process_sensor_data.h
  * @brief Header file for processing sensor data.
  * @version 0.1
@@ -8,8 +9,6 @@
 #ifndef PROCESS_SENSOR_DATA_H
 #define PROCESS_SENSOR_DATA_H
 
-#include <cstdint>
-#include <memory>
 #include <vector>
 
 typedef struct {
@@ -28,30 +27,51 @@ typedef struct {
     float right;
 } encoder_ticks_t;
 
+typedef struct {
+    float ray_position;
+    float average_depth;
+} obstacle_location_t;
+
+typedef struct {
+    float x;
+    float y;
+} coordinate_t;
+
 /**
  * @brief Class for processing LIDAR data.
  */
 class lidar_data {
-private:
-    const std::size_t m_totalLidarDataPoints; // Total LIDAR data points
-    const value_range_t m_scanDistance // LIDAR scan distance range
-    {
-        .min{0.0F}, .max{0.0F}
-    };
-    const value_range_t m_angleRange // LIDAR angle range
-    {
-        .min{0.0F}, .max{360.0F}
-    };
-
 public:
     lidar_data(
         std::size_t number_of_lidar_data_points,
         value_range_t scan_distance,
-        value_range_t angle_range);
+        value_range_t angle_range_Radians,
+        float detection_threshold);
 
     ~lidar_data();
 
-    std::vector<float> m_process_data(const std::vector<float> &data) const;
+    [[nodiscard]] std::vector<float> calculate_derivative(const std::vector<float> &data) const;
+
+    [[nodiscard]] std::vector<obstacle_location_t> find_obstacles(
+        const std::vector<float> &data,
+        const std::vector<float> &derivative_data) const;
+
+    [[nodiscard]] std::vector<coordinate_t> convert_obstacle_to_coordinate(
+        const std::vector<obstacle_location_t> &obstacles,
+        const pose_t currentPose) const;
+
+    [[nodiscard]] std::vector<coordinate_t> convert_scan_to_coordinate(const std::vector<float> &data,
+                                                                       const pose_t currentPose) const;
+
+private:
+    const std::size_t m_totalLidarDataPoints; // Total LIDAR data points
+    const value_range_t m_scanDistance; // LIDAR scan distance range
+    const value_range_t m_angleRange_Radians; // LIDAR angle range
+    const float m_detectionThreshold; //Threshold Value to Consider an object as obstacle
+    const float m_anglePerRayIncrement_Radians;
+
+private:
+    coordinate_t m_convert_ray_to_position(pose_t current_pose, float ray_id, float ray_value) const;
 };
 
 /**
@@ -72,6 +92,8 @@ public:
 
     void m_update_pose(encoder_ticks_t new_encoder_ticks); // Uses encoder ticks as input
     void m_update_pose(float x, float y, float theta); // Reformats the pose in required format
+    [[nodiscard]] pose_t transformFrame(pose_t currentPose) const; // Declaration without extra qualification
+
 
 private:
     const float m_encoderTicksPerMillimeter;
@@ -82,7 +104,6 @@ private:
 
 private:
     void m_calculate_motion(float dL, float dR);
-    [[nodiscard]] pose_t transformFrame(pose_t currentPose) const; // Declaration without extra qualification
 };
 
 #endif // PROCESS_SENSOR_DATA_H
