@@ -10,7 +10,6 @@
 #include <ostream>
 #include <string>
 #include "matplotlibcpp.h"
-#include <filesystem>
 
 namespace fs = std::filesystem;
 namespace plt = matplotlibcpp;
@@ -26,8 +25,7 @@ std::vector<std::vector<containerType> > readFile(
   const char *rootDataDirectory,
   const char *dataFile,
   std::vector<int> useFullFields) {
-  std::string data_file =
-      std::string(rootDataDirectory) + std::string(dataFile);
+  std::string data_file = std::string(rootDataDirectory) + std::string(dataFile);
   std::cout << "Reading: " << data_file << std::endl;
 
   if (!std::filesystem::exists(data_file)) {
@@ -46,7 +44,7 @@ std::vector<std::vector<containerType> > readFile(
     }
 
     std::vector<containerType> usefulData;
-    if (useFullFields.size() > 0) {
+    if (!useFullFields.empty()) {
       usefulData.reserve(useFullFields.size());
       for (auto num: useFullFields) {
         usefulData.push_back(
@@ -75,14 +73,14 @@ std::vector<std::vector<obstacle_location_t> > obstacle_lists;
 std::vector<std::vector<coordinate_t> > obstacle_coordinates;
 std::vector<pose_t> all_pose;
 
-void step(int ts, const encoder_ticks_t encoderTick, std::vector<float> &lidar_data) {
+void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &lidar_data) {
   robotOdomObject->m_update_pose(encoderTick);
-  pose_t current_pose = robotOdomObject->get_current_pose();
+  const pose_t current_pose = robotOdomObject->get_current_pose();
 
-  auto derivative = lidarObject->calculate_derivative(lidar_data);
-  auto obstacles = lidarObject->find_obstacles(lidar_data, derivative);
-  auto lidar_map = lidarObject->convert_scan_to_coordinate(lidar_data, current_pose);
-  auto obstacle_coordinate = lidarObject->convert_obstacle_to_coordinate(obstacles, current_pose);
+  const auto derivative = lidarObject->calculate_derivative(lidar_data);
+  const auto obstacles = lidarObject->find_obstacles(lidar_data, derivative);
+  const auto lidar_map = lidarObject->convert_scan_to_coordinate(lidar_data, current_pose);
+  const auto obstacle_coordinate = lidarObject->convert_obstacle_to_coordinate(obstacles, current_pose);
 
   all_pose.push_back(current_pose);
   lidar_derivatives.push_back(derivative);
@@ -117,6 +115,8 @@ int main(int argc, char **argv) {
   } else {
     std::cerr << "Failed to create directory: " << results_dir << std::endl;
   }
+
+
   /////////////////////////// Read Data ///////////////////////////////////////
   //Read Motor Ticks
   std::vector<std::vector<int> > motor_ticks = readFile<int>(
@@ -140,6 +140,7 @@ int main(int argc, char **argv) {
     path.c_str(),
     "/data/Unit A/robot4_scan.txt",
     std::vector<int>{});
+
 
   /////////////////////////// Initialize Objects ///////////////////////////////////////
   //Initialize Robot Odometry
@@ -169,6 +170,7 @@ int main(int argc, char **argv) {
     100.0F
   );
 
+
   /////////////////////////// Run SLAM ///////////////////////////////////////
   for (std::size_t i = 0; i < motor_ticks.size(); i++) {
     auto encoderReading = motor_ticks.at(i);
@@ -180,6 +182,7 @@ int main(int argc, char **argv) {
     };
     step(timeStep, encoderVal, robot_lidar_data.at(i));
   }
+
 
   /////////////////////////// Save Data ///////////////////////////////////////
   //Save Motor Position to File
@@ -213,14 +216,15 @@ int main(int argc, char **argv) {
   }
   obs_data_file.close();
 
+
   /////////////////////////// Plot Graph ///////////////////////////////////////
   {
     //Robot Pose
     std::vector<float> x_data, y_data, theta_data;
-    for (auto pose: all_pose) {
-      x_data.push_back(pose.x);
-      y_data.push_back(pose.y);
-      theta_data.push_back(pose.theta);
+    for (auto [x,y,theta]: all_pose) {
+      x_data.push_back(x);
+      y_data.push_back(y);
+      theta_data.push_back(theta);
     }
     plt::figure_size(800, 800);
     plt::named_plot("Calculated Pose", x_data, y_data, "b-o");
@@ -228,7 +232,7 @@ int main(int argc, char **argv) {
     plt::legend();
     plt::xlabel("x (mm)");
     plt::ylabel("y (mm)");
-    plt::title("Robot Pose");
+    plt::title("Robot Pose In Cartesian Space");
     plt::grid(true);
   }
 
@@ -239,45 +243,42 @@ int main(int argc, char **argv) {
     plt::named_plot("lidar derivative " + std::to_string(idx), lidar_derivatives.at(idx), "r");
     auto obstacles = obstacle_lists.at(idx);
     std::vector<float> ray_pos, average_depth;
-    for (auto obstacle: obstacles) {
-      ray_pos.push_back(obstacle.ray_position);
-      average_depth.push_back(obstacle.average_depth);
+    for (auto [ray, depth]: obstacles) {
+      ray_pos.push_back(ray);
+      average_depth.push_back(depth);
     }
     plt::named_plot("Obstacles " + std::to_string(idx), ray_pos, average_depth, "y-o");
     plt::legend();
     plt::xlabel("position");
     plt::ylabel("Sensor Reading");
-    plt::title("Lidar Data");
+    plt::title("Lidar Raw Data with Derivative Calculation and Obstacle Detected");
     plt::grid(true);
   }
   //Lidar Map
   {
     plt::figure_size(800, 800);
-
     auto lidar_map = lidar_coordinates.at(idx);
     std::vector<float> x, y;
-    for (auto scan: lidar_map) {
-      x.push_back(scan.x);
-      y.push_back(scan.y);
+    for (auto [x_coor,y_coor]: lidar_map) {
+      x.push_back(x_coor);
+      y.push_back(y_coor);
     }
     plt::named_plot("lidar " + std::to_string(idx), x, y, "b");
 
     auto obstacle_pos = obstacle_coordinates.at(idx);
     std::vector<float> x_obs, y_obs;
-    for (auto obs: obstacle_pos) {
-      x_obs.push_back(obs.x);
-      y_obs.push_back(obs.y);
+    for (auto [x,y]: obstacle_pos) {
+      x_obs.push_back(x);
+      y_obs.push_back(y);
     }
     plt::named_plot("Obstacles " + std::to_string(idx), x_obs, y_obs, "y-o");
     plt::legend();
     plt::xlabel("position");
     plt::ylabel("Sensor Reading");
-    plt::title("Lidar Data");
+    plt::title("Lidar Data converted to Cartesian Space with Obstacles");
     plt::grid(true);
   }
 
-
   plt::show();
-
   return 0;
 }
