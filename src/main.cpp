@@ -9,10 +9,13 @@
 #include <memory>
 #include <ostream>
 #include <string>
-#include "matplotlibcpp.h"
+#include <opencv2/opencv.hpp>
 
 namespace fs = std::filesystem;
-namespace plt = matplotlibcpp;
+cv::Scalar red(0, 0, 255);
+cv::Scalar green(0, 255, 0);
+cv::Scalar blue(255, 0, 0);
+cv::Scalar white(255, 255, 255);
 
 std::unique_ptr<lidar_data> lidarObject;
 std::unique_ptr<robot_odometry> robotOdomObject;
@@ -47,13 +50,11 @@ std::vector<std::vector<containerType> > readFile(
     if (!useFullFields.empty()) {
       usefulData.reserve(useFullFields.size());
       for (auto num: useFullFields) {
-        usefulData.push_back(
-          static_cast<containerType>(std::stod(words.at(num))));
+        usefulData.push_back(static_cast<containerType>(std::stod(words.at(num))));
       }
     } else {
       for (std::size_t idx = 3; idx < words.size(); idx++) {
-        usefulData.push_back(
-          static_cast<containerType>(std::stod(words.at(idx))));
+        usefulData.push_back(static_cast<containerType>(std::stod(words.at(idx))));
       }
     }
     data.push_back(usefulData);
@@ -65,6 +66,55 @@ std::vector<std::vector<containerType> > readFile(
 std::ostream &operator<<(std::ostream &os, const pose_t &pose) {
   os << pose.x << "\t" << pose.y << "\t" << pose.theta;
   return os;
+}
+
+template<typename T, typename... Vectors>
+int computeImageDimensions(const std::vector<T> &first, const Vectors &... others) {
+  auto minmax_x = std::minmax_element(first.begin(), first.end());
+  T min_x = *minmax_x.first;
+  T max_x = *minmax_x.second;
+  ([&](const std::vector<T> &vec) {
+    auto minmax = std::minmax_element(vec.begin(), vec.end());
+    min_x = std::min(min_x, *minmax.first);
+    max_x = std::max(max_x, *minmax.second);
+  }(others), ...);
+  return static_cast<int>(max_x - min_x + 100);
+}
+
+template<typename T>
+void plotGraphPoints(cv::Mat &image, const std::vector<T> &x, const std::vector<T> &y, const cv::Scalar &color,
+                     int height) {
+  // Draw points
+  for (size_t i = 0; i < x.size(); ++i) {
+    int xCoord = static_cast<int>(x[i]);
+    int yCoord = height - static_cast<int>(y[i]);
+    cv::circle(image, cv::Point(xCoord, yCoord), 2, color, cv::FILLED);
+  }
+}
+
+template<typename T>
+void plotLineGraph(cv::Mat &image, const std::vector<T> &x, const std::vector<T> &y, const cv::Scalar &color,
+                   int height) {
+  // Draw lines
+  for (size_t i = 1; i < x.size(); ++i) {
+    int xCoord1 = static_cast<int>(x[i - 1]);
+    int yCoord1 = height - static_cast<int>(y[i - 1]);
+    int xCoord2 = static_cast<int>(x[i]);
+    int yCoord2 = height - static_cast<int>(y[i]);
+    cv::line(image, cv::Point(xCoord1, yCoord1), cv::Point(xCoord2, yCoord2), color, 2);
+  }
+}
+
+void drawLegend(cv::Mat &image, const std::vector<std::string> &labels, const std::vector<cv::Scalar> &colors,
+                int x = 50, int y = 50) {
+  int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+  double fontScale = 0.5;
+  int thickness = 1;
+
+  for (size_t i = 0; i < labels.size(); ++i) {
+    cv::putText(image, labels[i], cv::Point(x + 20, y + i * 20), fontFace, fontScale, white, thickness);
+    cv::rectangle(image, cv::Point(x, y + i * 20 - 10), cv::Point(x + 10, y + i * 20), colors[i], cv::FILLED);
+  }
 }
 
 std::vector<std::vector<float> > lidar_derivatives;
@@ -116,7 +166,6 @@ int main(int argc, char **argv) {
     std::cerr << "Failed to create directory: " << results_dir << std::endl;
   }
 
-
   /////////////////////////// Read Data ///////////////////////////////////////
   //Read Motor Ticks
   std::vector<std::vector<int> > motor_ticks = readFile<int>(
@@ -140,7 +189,6 @@ int main(int argc, char **argv) {
     path.c_str(),
     "/data/Unit A/robot4_scan.txt",
     std::vector<int>{});
-
 
   /////////////////////////// Initialize Objects ///////////////////////////////////////
   //Initialize Robot Odometry
@@ -170,7 +218,6 @@ int main(int argc, char **argv) {
     100.0F
   );
 
-
   /////////////////////////// Run SLAM ///////////////////////////////////////
   for (std::size_t i = 0; i < motor_ticks.size(); i++) {
     auto encoderReading = motor_ticks.at(i);
@@ -183,7 +230,6 @@ int main(int argc, char **argv) {
     step(timeStep, encoderVal, robot_lidar_data.at(i));
   }
 
-
   /////////////////////////// Save Data ///////////////////////////////////////
   //Save Motor Position to File
   std::string pose_data = path;
@@ -195,7 +241,6 @@ int main(int argc, char **argv) {
   }
   for (auto current_pose: all_pose) {
     pose_data_file << "F\t" << current_pose << "\n";
-    // std::cout << current_pose << std::endl;
   }
   pose_data_file.close();
 
@@ -216,7 +261,6 @@ int main(int argc, char **argv) {
   }
   obs_data_file.close();
 
-
   /////////////////////////// Plot Graph ///////////////////////////////////////
   {
     //Robot Pose
@@ -226,59 +270,77 @@ int main(int argc, char **argv) {
       y_data.push_back(y);
       theta_data.push_back(theta);
     }
-    plt::figure_size(800, 800);
-    plt::named_plot("Calculated Pose", x_data, y_data, "b-o");
-    plt::named_plot("True Pose", x_true, y_true, "r-o");
-    plt::legend();
-    plt::xlabel("x (mm)");
-    plt::ylabel("y (mm)");
-    plt::title("Robot Pose In Cartesian Space");
-    plt::grid(true);
+
+    auto width = computeImageDimensions(x_data, x_true);
+    auto height = computeImageDimensions(y_data, y_true);
+
+    std::vector<std::string> labels = {"Calculated Pose", "True Pose"};
+    std::vector<cv::Scalar> colors = {red, green};
+    cv::Mat pose_image = cv::Mat::zeros(height, width, CV_8UC3);
+
+    plotGraphPoints(pose_image, x_data, y_data, red, height);
+    plotGraphPoints(pose_image, x_true, y_true, green, height);
+    drawLegend(pose_image, labels, colors);
+    cv::imshow("Robot Pose", pose_image);
   }
 
   //Lidar Raw Data
   int idx = 0; {
-    plt::figure_size(800, 800);
-    plt::named_plot("processed lidar " + std::to_string(idx), robot_lidar_data.at(idx), "b");
-    plt::named_plot("lidar derivative " + std::to_string(idx), lidar_derivatives.at(idx), "r");
-    auto obstacles = obstacle_lists.at(idx);
+    std::vector<float> x_axis, lidar_data, lidar_derivative;
+    for (size_t i = 0; i < robot_lidar_data.at(idx).size(); i++) {
+      x_axis.push_back(i);
+      lidar_data.push_back(robot_lidar_data.at(idx).at(i));
+      lidar_derivative.push_back(lidar_derivatives.at(idx).at(i));
+    }
     std::vector<float> ray_pos, average_depth;
-    for (auto [ray, depth]: obstacles) {
+    for (auto [ray, depth]: obstacle_lists.at(idx)) {
       ray_pos.push_back(ray);
       average_depth.push_back(depth);
     }
-    plt::named_plot("Obstacles " + std::to_string(idx), ray_pos, average_depth, "y-o");
-    plt::legend();
-    plt::xlabel("position");
-    plt::ylabel("Sensor Reading");
-    plt::title("Lidar Raw Data with Derivative Calculation and Obstacle Detected");
-    plt::grid(true);
+    std::vector<std::string> labels = {"Lidar Data", "Lidar Derivative", "Obstacles"};
+    std::vector<cv::Scalar> colors = {red, blue, green};
+
+
+    auto width = computeImageDimensions(x_axis, ray_pos);
+    auto height = computeImageDimensions(lidar_derivative, lidar_data, average_depth);
+
+    cv::Mat lidar_image = cv::Mat::zeros(height, width, CV_8UC3);
+    plotLineGraph(lidar_image, x_axis, lidar_data, red, height);
+    plotLineGraph(lidar_image, x_axis, lidar_derivative, blue, height);
+    plotGraphPoints(lidar_image, ray_pos, average_depth, green, height);
+    drawLegend(lidar_image, labels, colors);
+
+    cv::imshow("Lidar Raw Data", lidar_image);
   }
+  cv::waitKey(0);
+
   //Lidar Map
-  {
-    plt::figure_size(800, 800);
+  for (std::size_t idx = 0; idx < lidar_coordinates.size(); idx++) {
     auto lidar_map = lidar_coordinates.at(idx);
     std::vector<float> x, y;
     for (auto [x_coor,y_coor]: lidar_map) {
       x.push_back(x_coor);
       y.push_back(y_coor);
     }
-    plt::named_plot("lidar " + std::to_string(idx), x, y, "b");
-
     auto obstacle_pos = obstacle_coordinates.at(idx);
     std::vector<float> x_obs, y_obs;
     for (auto [x,y]: obstacle_pos) {
       x_obs.push_back(x);
       y_obs.push_back(y);
     }
-    plt::named_plot("Obstacles " + std::to_string(idx), x_obs, y_obs, "y-o");
-    plt::legend();
-    plt::xlabel("position");
-    plt::ylabel("Sensor Reading");
-    plt::title("Lidar Data converted to Cartesian Space with Obstacles");
-    plt::grid(true);
+    auto width = computeImageDimensions(x, x_obs);
+    auto height = computeImageDimensions(y, y_obs);
+
+    std::vector<std::string> labels = {"Lidar Points", "Obstacles"};
+    std::vector<cv::Scalar> colors = {red, green};
+
+    cv::Mat lidar_map_image = cv::Mat::zeros(height, width, CV_8UC3);
+    plotLineGraph(lidar_map_image, x, y, red, height);
+    plotGraphPoints(lidar_map_image, x_obs, y_obs, green, height);
+    drawLegend(lidar_map_image, labels, colors);
+    cv::imshow("Lidar Map", lidar_map_image);
+    cv::waitKey(150);
   }
 
-  plt::show();
   return 0;
 }

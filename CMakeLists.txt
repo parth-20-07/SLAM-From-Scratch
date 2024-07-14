@@ -3,31 +3,29 @@ project(slam)
 
 set(CMAKE_CXX_STANDARD 17)
 
-find_package(OpenCV REQUIRED)
-find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
+# Set the build type to Debug
+set(CMAKE_BUILD_TYPE Debug)
 
-# Correct path for pybind11_DIR
-set(pybind11_DIR "~/.local/lib/python3.8/site-packages/pybind11/share/cmake/pybind11")
-find_package(pybind11 REQUIRED)
+# Add debug flags
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+
+find_package(OpenCV REQUIRED)
+
 
 include_directories(
-  include
-  ${OpenCV_INCLUDE_DIRS}
-  ${Python3_INCLUDE_DIRS}
-  ${Python3_NumPy_INCLUDE_DIRS}
-  ${CMAKE_SOURCE_DIR}/ext/matplotlibcpp
+        include
+        ${OpenCV_INCLUDE_DIRS}
 )
 
 add_executable(slam
-  src/main.cpp
-  src/process_sensor_data.cpp
-  src/single_robot_mapping.cpp
+        src/main.cpp
+        src/process_sensor_data.cpp
+        src/single_robot_mapping.cpp
 )
 
 target_link_libraries(slam
-  ${OpenCV_LIBS}
-  Python3::Python
-  Python3::NumPy
-  pybind11::module
+        ${OpenCV_LIBS}
 )
 
+# Enable debug info in executable
+set_target_properties(slam PROPERTIES COMPILE_FLAGS "-g")
