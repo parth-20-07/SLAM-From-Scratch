@@ -11,10 +11,11 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 
 find_package(OpenCV REQUIRED)
 
-
+# Add Eigen to the include directories
 include_directories(
         include
         ${OpenCV_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/ext/eigen-3.4.0  # Adjust this path to the location of Eigen in your project
 )
 
 add_executable(slam

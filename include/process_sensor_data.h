@@ -50,18 +50,10 @@ public:
 
     ~lidar_data();
 
-    [[nodiscard]] std::vector<float> calculate_derivative(const std::vector<float> &data) const;
+    [[nodiscard]] std::vector<coordinate_t> process_lidar_scan(const std::vector<float> &lidar_scan,
+                                                               const pose_t current_pose);
 
-    [[nodiscard]] std::vector<obstacle_location_t> find_obstacles(
-        const std::vector<float> &data,
-        const std::vector<float> &derivative_data) const;
-
-    [[nodiscard]] std::vector<coordinate_t> convert_obstacle_to_coordinate(
-        const std::vector<obstacle_location_t> &obstacles,
-        const pose_t currentPose) const;
-
-    [[nodiscard]] std::vector<coordinate_t> convert_scan_to_coordinate(const std::vector<float> &data,
-                                                                       const pose_t currentPose) const;
+    [[nodiscard]] std::vector<coordinate_t> get_obstacle_coordinates(void);
 
 private:
     const std::size_t m_totalLidarDataPoints; // Total LIDAR data points
@@ -69,9 +61,23 @@ private:
     const value_range_t m_angleRange_Radians; // LIDAR angle range
     const float m_detectionThreshold; //Threshold Value to Consider an object as obstacle
     const float m_anglePerRayIncrement_Radians;
+    std::vector<coordinate_t> m_obstacle_coordinates;
 
 private:
     coordinate_t m_convert_ray_to_position(pose_t current_pose, float ray_id, float ray_value) const;
+
+    [[nodiscard]] std::vector<float> calculate_derivative(const std::vector<float> &data) const;
+
+    [[nodiscard]] std::vector<obstacle_location_t> find_obstacles(
+        const std::vector<float> &data,
+        const std::vector<float> &derivative_data) const;
+
+    [[nodiscard]] std::vector<coordinate_t> convert_obstacle_to_coordinate_in_lidar_frame(
+        const std::vector<obstacle_location_t> &obstacles,
+        const pose_t currentPose) const;
+
+    [[nodiscard]] std::vector<coordinate_t> convert_scan_to_coordinate_in_lidar_frame(const std::vector<float> &data,
+                                                                       const pose_t currentPose) const;
 };
 
 /**

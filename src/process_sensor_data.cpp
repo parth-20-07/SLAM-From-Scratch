@@ -85,12 +85,11 @@ std::vector<obstacle_location_t> lidar_data::find_obstacles(
     return obstacles;
 }
 
-[[nodiscard]] std::vector<coordinate_t> lidar_data::convert_obstacle_to_coordinate(
+[[nodiscard]] std::vector<coordinate_t> lidar_data::convert_obstacle_to_coordinate_in_lidar_frame(
     const std::vector<obstacle_location_t> &obstacles,
     const pose_t currentPose) const {
-
     std::vector<coordinate_t> obstacle_positions;
-    for (std::size_t idx = 0; idx<obstacles.size();idx++) {
+    for (std::size_t idx = 0; idx < obstacles.size(); idx++) {
         auto obstacle = obstacles.at(idx);
         float ray_id = obstacle.ray_position;
         float ray_value = obstacle.average_depth;
@@ -100,34 +99,54 @@ std::vector<obstacle_location_t> lidar_data::find_obstacles(
             ray_value));
     }
 
-    return  obstacle_positions;
+    return obstacle_positions;
 }
 
 
-[[nodiscard]] std::vector<coordinate_t> lidar_data::convert_scan_to_coordinate(
+[[nodiscard]] std::vector<coordinate_t> lidar_data::convert_scan_to_coordinate_in_lidar_frame(
     const std::vector<float> &data,
     const pose_t currentPose) const {
-
     std::vector<coordinate_t> positions;
-    for (std::size_t idx = 0; idx<data.size();idx++) {
+    for (std::size_t idx = 0; idx < data.size(); idx++) {
         float ray_id = idx;
         float ray_value = data.at(idx);
-        positions.emplace_back(this->m_convert_ray_to_position(
-            currentPose,
-            ray_id,
-            ray_value));
+        if (ray_value < this->m_scanDistance.max) {
+            positions.emplace_back(this->m_convert_ray_to_position(
+                currentPose,
+                ray_id,
+                ray_value));
+        } else {
+            constexpr coordinate_t unused{-1.0F, -1.0F};
+            positions.emplace_back(unused);
+        }
     }
 
-    return  positions;
+    return positions;
 }
 
+[[nodiscard]] std::vector<coordinate_t> lidar_data::process_lidar_scan(const std::vector<float> &lidar_scan,
+                                                                       const pose_t current_pose) {
+    const auto derivative = this->calculate_derivative(lidar_scan);
+    const auto obstacles = this->find_obstacles(lidar_scan, derivative);
+    const auto lidar_map = this->convert_scan_to_coordinate_in_lidar_frame(lidar_scan, current_pose);
+    m_obstacle_coordinates = this->convert_obstacle_to_coordinate_in_lidar_frame(obstacles, current_pose);
+
+    return lidar_map;
+}
+
+[[nodiscard]] std::vector<coordinate_t> lidar_data::get_obstacle_coordinates(void) {
+    return m_obstacle_coordinates;
+}
+
+
 coordinate_t lidar_data::m_convert_ray_to_position(pose_t current_pose, float ray_id, float ray_value) const {
-    float alpha = ray_id * m_anglePerRayIncrement_Radians; //Angle Measured wrt the robot heading
-    float beta = current_pose.theta - alpha; //Angle Measured wrt horizontal
+    float alpha = ray_id * m_anglePerRayIncrement_Radians; //Angle Measured wrt lidar starting ray
+    float delta = alpha - (this->m_totalLidarDataPoints / 2.0f) * m_anglePerRayIncrement_Radians;
+    float beta = current_pose.theta - delta; //Angle Measured wrt horizontal
     float dX = ray_value * std::cos(beta);
     float dY = ray_value * std::sin(beta);
 
-    return coordinate_t{current_pose.x + dX, current_pose.y - dY};
+    return coordinate_t{dX, dY};
 }
 
 
