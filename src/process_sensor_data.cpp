@@ -124,14 +124,15 @@ std::vector<obstacle_location_t> lidar_data::find_obstacles(
     return positions;
 }
 
-[[nodiscard]] std::vector<coordinate_t> lidar_data::process_lidar_scan(const std::vector<float> &lidar_scan,
-                                                                       const pose_t current_pose) {
+[[nodiscard]] std::pair<std::vector<coordinate_t>, std::vector<coordinate_t> > lidar_data::process_lidar_scan(
+    const std::vector<float> &lidar_scan,
+    const pose_t current_pose) {
     const auto derivative = this->calculate_derivative(lidar_scan);
     const auto obstacles = this->find_obstacles(lidar_scan, derivative);
     const auto lidar_map = this->convert_scan_to_coordinate_in_lidar_frame(lidar_scan, current_pose);
     m_obstacle_coordinates = this->convert_obstacle_to_coordinate_in_lidar_frame(obstacles, current_pose);
 
-    return lidar_map;
+    return std::pair<std::vector<coordinate_t>, std::vector<coordinate_t> >(lidar_map, m_obstacle_coordinates);
 }
 
 [[nodiscard]] std::vector<coordinate_t> lidar_data::get_obstacle_coordinates(void) {
@@ -140,11 +141,12 @@ std::vector<obstacle_location_t> lidar_data::find_obstacles(
 
 
 coordinate_t lidar_data::m_convert_ray_to_position(pose_t current_pose, float ray_id, float ray_value) const {
-    float alpha = ray_id * m_anglePerRayIncrement_Radians; //Angle Measured wrt lidar starting ray
-    float delta = alpha - (this->m_totalLidarDataPoints / 2.0f) * m_anglePerRayIncrement_Radians;
-    float beta = current_pose.theta - delta; //Angle Measured wrt horizontal
-    float dX = ray_value * std::cos(beta);
-    float dY = ray_value * std::sin(beta);
+    const float alpha = ray_id * m_anglePerRayIncrement_Radians; // Angle of the current ray
+    static const float half_FoV = (static_cast<float>(m_totalLidarDataPoints) / 2.0F) * m_anglePerRayIncrement_Radians;
+    const float gamma = half_FoV - alpha; // Adjusting alpha to the lidar frame
+
+    const float dX = ray_value * std::cos(gamma);
+    const float dY = ray_value * std::sin(gamma);
 
     return coordinate_t{dX, dY};
 }
@@ -181,13 +183,14 @@ void robot_odometry::m_update_pose(const float x, const float y, const float the
 }
 
 // Update pose using encoder ticks
-void robot_odometry::m_update_pose(const encoder_ticks_t new_encoder_ticks) {
+pose_t robot_odometry::m_update_pose(const encoder_ticks_t new_encoder_ticks) {
     const float dL = (new_encoder_ticks.left - this->m_currentEncoderTickValue.left) * this->
                      m_encoderTicksPerMillimeter;
     const float dR = (new_encoder_ticks.right - this->m_currentEncoderTickValue.right) * this->
                      m_encoderTicksPerMillimeter;
     this->m_calculate_motion(dL, dR);
     this->m_currentEncoderTickValue = new_encoder_ticks;
+    return this->m_robotPose;
 }
 
 // Calculate motion based on wheel distances

@@ -50,8 +50,9 @@ public:
 
     ~lidar_data();
 
-    [[nodiscard]] std::vector<coordinate_t> process_lidar_scan(const std::vector<float> &lidar_scan,
-                                                               const pose_t current_pose);
+    [[nodiscard]] std::pair<std::vector<coordinate_t>, std::vector<coordinate_t> > process_lidar_scan(
+        const std::vector<float> &lidar_scan,
+        const pose_t current_pose);
 
     [[nodiscard]] std::vector<coordinate_t> get_obstacle_coordinates(void);
 
@@ -77,7 +78,7 @@ private:
         const pose_t currentPose) const;
 
     [[nodiscard]] std::vector<coordinate_t> convert_scan_to_coordinate_in_lidar_frame(const std::vector<float> &data,
-                                                                       const pose_t currentPose) const;
+        const pose_t currentPose) const;
 };
 
 /**
@@ -96,7 +97,7 @@ public:
 
     [[nodiscard]] pose_t get_current_pose() const;
 
-    void m_update_pose(encoder_ticks_t new_encoder_ticks); // Uses encoder ticks as input
+    [[nodiscard]] pose_t m_update_pose(encoder_ticks_t new_encoder_ticks); // Uses encoder ticks as input
     void m_update_pose(float x, float y, float theta); // Reformats the pose in required format
     [[nodiscard]] pose_t transformFrame(pose_t currentPose) const; // Declaration without extra qualification
 

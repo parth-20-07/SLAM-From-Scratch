@@ -10,12 +10,20 @@ set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 
 find_package(OpenCV REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
+
+# Correct path for pybind11_DIR
+set(pybind11_DIR "~/.local/lib/python3.8/site-packages/pybind11/share/cmake/pybind11")
+find_package(pybind11 REQUIRED)
 
 # Add Eigen to the include directories
 include_directories(
         include
         ${OpenCV_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}/ext/eigen-3.4.0  # Adjust this path to the location of Eigen in your project
+        ${Python3_INCLUDE_DIRS}
+        ${Python3_NumPy_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/ext/matplotlibcpp
 )
 
 add_executable(slam
@@ -26,6 +34,9 @@ add_executable(slam
 
 target_link_libraries(slam
         ${OpenCV_LIBS}
+        Python3::Python
+        Python3::NumPy
+        pybind11::module
 )
 
 # Enable debug info in executable

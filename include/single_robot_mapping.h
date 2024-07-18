@@ -39,27 +39,7 @@ public:
 
     ~map_environment();
 
-    Grid updateMap(const std::vector<coordinate_t> &lidarScan, const pose_t &current_pose) {
-        for (size_t i = 0; i < lidarScan.size(); i++) {
-            auto [x_scan, y_scan] = lidarScan.at(i);
-            if (x_scan != -1.0F) {
-                auto x = current_pose.x + x_scan;
-                auto y = current_pose.y + y_scan;
-                if ((2.0F * x > this->m_totalGridLength_millimeters) || (
-                        2.0F * y > this->m_totalGridLength_millimeters)) {
-                    float new_length = std::max(x, y);
-                    new_length *= 4.0f;
-                    resize_grid(new_length);
-                }
-                const int x_off = this->m_Offset - static_cast<int>(x / this->m_gridCellSize_millimeters);
-                const int y_off = this->m_Offset - static_cast<int>(y / this->m_gridCellSize_millimeters);
-                this->m_gridMap(y_off, x_off) = cellState::FILLED; // Use parentheses for Eigen matrix element access
-            }
-        }
-        return this->m_gridMap;
-    }
-
-
+    Grid updateMap(const std::vector<coordinate_t> &lidarScan, const pose_t &current_pose);
     /* --------------------------------- Getters -------------------------------- */
     [[nodiscard]] const float getGridLength() const noexcept { return this->m_totalGridLength_millimeters; }
     [[nodiscard]] const Grid &getGridMap() const noexcept { return this->m_gridMap; }

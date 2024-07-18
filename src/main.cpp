@@ -11,8 +11,11 @@
 #include <ostream>
 #include <string>
 #include <opencv2/opencv.hpp>
+#include "matplotlibcpp.h"
 
 namespace fs = std::filesystem;
+namespace plt = matplotlibcpp;
+
 cv::Scalar red(0, 0, 255);
 cv::Scalar green(0, 255, 0);
 cv::Scalar blue(255, 0, 0);
@@ -21,6 +24,7 @@ cv::Scalar white(255, 255, 255);
 std::unique_ptr<lidar_data> lidarObject;
 std::unique_ptr<robot_odometry> robotOdomObject;
 std::unique_ptr<map_environment> robotMap;
+constexpr float grid_size = 10.0f;
 
 template<typename containerType>
 std::vector<std::vector<containerType> > readFile(
@@ -62,11 +66,6 @@ std::vector<std::vector<containerType> > readFile(
     return std::move(data);
 }
 
-std::ostream &operator<<(std::ostream &os, const pose_t &pose) {
-    os << pose.x << "\t" << pose.y << "\t" << pose.theta;
-    return os;
-}
-
 template<typename T, typename... Vectors>
 int computeImageDimensions(const std::vector<T> &first, const Vectors &... others) {
     auto minmax_x = std::minmax_element(first.begin(), first.end());
@@ -91,6 +90,48 @@ void plotGraphPoints(cv::Mat &image, const std::vector<T> &x, const std::vector<
     }
 }
 
+void plotGraphPoints(cv::Mat &image, const std::vector<pose_t> &pose, const cv::Scalar &color, int height) {
+    for (const auto &[x, y, theta]: pose) {
+        const int x_off = robotMap->m_Offset + static_cast<int>(x / grid_size);
+        const int y_off = height - (robotMap->m_Offset + static_cast<int>(y / grid_size)) - 1;
+        cv::circle(image, cv::Point(x_off, y_off), 2, color, cv::FILLED);
+
+        // Calculate the end point of the heading line
+        const int line_length = 10; // length of the line indicating heading
+        const int x_end = x_off + static_cast<int>(line_length * cos(theta));
+        const int y_end = y_off - static_cast<int>(line_length * sin(theta));
+
+        // Draw the heading line
+        cv::line(image, cv::Point(x_off, y_off), cv::Point(x_end, y_end), color, 1);
+    }
+}
+
+template<typename T>
+void plotLineGraph(cv::Mat &image, const std::vector<T> &x, const std::vector<T> &y, const cv::Scalar &color,
+                   int height) {
+    // Draw lines
+    for (size_t i = 1; i < x.size(); ++i) {
+        int xCoord1 = static_cast<int>(x[i - 1]);
+        int yCoord1 = height - static_cast<int>(y[i - 1]);
+        int xCoord2 = static_cast<int>(x[i]);
+        int yCoord2 = height - static_cast<int>(y[i]);
+        cv::line(image, cv::Point(xCoord1, yCoord1), cv::Point(xCoord2, yCoord2), color, 2);
+    }
+}
+
+void plotLineGraph(cv::Mat &image, const std::vector<coordinate_t> &coordinates, const cv::Scalar &color, int height) {
+    // Draw lines
+    for (size_t i = 1; i < coordinates.size(); ++i) {
+        auto [x1, y1] = coordinates.at(i - 1);
+        auto [x2, y2] = coordinates.at(i);
+        const int xCoord1 = height - static_cast<int>(x1);
+        const int yCoord1 = height - static_cast<int>(y1);
+        const int xCoord2 = height - static_cast<int>(x2);
+        const int yCoord2 = height - static_cast<int>(y2);
+        cv::line(image, cv::Point(xCoord1, yCoord1), cv::Point(xCoord2, yCoord2), color, 2);
+    }
+}
+
 void gridToImage(cv::Mat &image, const Grid &grid) {
     int rows = grid.rows();
     int cols = grid.cols();
@@ -102,9 +143,9 @@ void gridToImage(cv::Mat &image, const Grid &grid) {
     static const cv::Vec3b filledColor(0, 0, 0); // Black for FILLED
 
     // Populate the image
-    for (int y = 0; y < rows; ++y) {
-        float y_val = rows - y - 1;
-        for (int x = 0; x < cols; ++x) {
+    for (int y = 0; y < rows; y++) {
+        const int y_val = rows - y - 1;
+        for (int x = 0; x < cols; x++) {
             // Ensure y and x are within bounds
             if (y < rows && x < cols) {
                 switch (grid(y, x)) {
@@ -126,19 +167,6 @@ void gridToImage(cv::Mat &image, const Grid &grid) {
 }
 
 
-template<typename T>
-void plotLineGraph(cv::Mat &image, const std::vector<T> &x, const std::vector<T> &y, const cv::Scalar &color,
-                   int height) {
-    // Draw lines
-    for (size_t i = 1; i < x.size(); ++i) {
-        int xCoord1 = static_cast<int>(x[i - 1]);
-        int yCoord1 = height - static_cast<int>(y[i - 1]);
-        int xCoord2 = static_cast<int>(x[i]);
-        int yCoord2 = height - static_cast<int>(y[i]);
-        cv::line(image, cv::Point(xCoord1, yCoord1), cv::Point(xCoord2, yCoord2), color, 2);
-    }
-}
-
 void drawLegend(cv::Mat &image, const std::vector<std::string> &labels, const std::vector<cv::Scalar> &colors,
                 int x = 50, int y = 50) {
     int fontFace = cv::FONT_HERSHEY_SIMPLEX;
@@ -154,16 +182,46 @@ void drawLegend(cv::Mat &image, const std::vector<std::string> &labels, const st
 std::vector<std::vector<coordinate_t> > lidar_coordinates;
 std::vector<pose_t> all_pose;
 std::vector<Grid> all_maps;
+cv::Mat slam_map_image;
 
-void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &lidar_data) {
-    robotOdomObject->m_update_pose(encoderTick);
-    const pose_t current_pose = robotOdomObject->get_current_pose();
+void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &lidar_data, int idx, bool plot) {
+    const pose_t current_pose = robotOdomObject->m_update_pose(encoderTick);
 
-    const auto lidar_map = lidarObject->process_lidar_scan(lidar_data, current_pose);
+    const auto [lidar_map, obstacles] = lidarObject->process_lidar_scan(lidar_data, current_pose);
     auto currentMap = robotMap->updateMap(lidar_map, current_pose);
+
     all_pose.push_back(current_pose);
     lidar_coordinates.push_back(lidar_map);
     all_maps.push_back(currentMap);
+
+    gridToImage(slam_map_image, currentMap);
+    plotGraphPoints(slam_map_image, all_pose, red, slam_map_image.cols);
+    cv::imshow("Lidar Map", slam_map_image);
+    cv::waitKey(10);
+    if (plot) {
+        // Plot with matplotlib
+        plt::figure_size(800, 800);
+        std::vector<float> x, y;
+        for (auto scan: lidar_map) {
+            x.push_back(scan.x);
+            y.push_back(scan.y);
+        }
+        plt::named_plot("lidar ", x, y, "b");
+        std::vector<float> x_obs, y_obs;
+        for (auto obs: obstacles) {
+            x_obs.push_back(obs.x);
+            y_obs.push_back(obs.y);
+        }
+        plt::named_plot("Obstacles ", x_obs, y_obs, "y-o");
+        plt::named_plot("Current Pose", std::vector<float>{current_pose.x / grid_size},
+                        std::vector<float>{current_pose.y / grid_size}, "r-o");
+        plt::legend();
+        plt::xlabel("position");
+        plt::ylabel("Sensor Reading");
+        plt::title("Lidar Data " + std::to_string(idx));
+        plt::grid(true);
+        plt::show();
+    }
 }
 
 int main(int argc, char **argv) {
@@ -240,74 +298,31 @@ int main(int argc, char **argv) {
     //Lidar Scanning
     lidarObject = std::make_unique<lidar_data>(
         robot_lidar_data.at(0).size(),
-        value_range_t{20.0F,300.0F},
+        value_range_t{20.0F, 350.0F},
         value_range_t{-2.09466781009F, 1.95504146993F},
         100.0F
     );
 
     // Environment Map
-    robotMap = std::make_unique<map_environment>(100.0, 5.0);
+    robotMap = std::make_unique<map_environment>(100.0, grid_size);
 
     /////////////////////////// Run SLAM ///////////////////////////////////////
-    for (std::size_t i = 0; i < motor_ticks.size(); i++) {
+    for (std::size_t i = 2; i < motor_ticks.size(); i++) {
         //Encoder Data
-        auto encoderReading = motor_ticks.at(i);
-
-        int timeStep = encoderReading.at(0);
+        auto motor_tick = motor_ticks.at(i);
+        int ts = motor_tick.at(0);
+        int left = motor_tick.at(1);
+        int right = motor_tick.at(2);
         encoder_ticks_t encoderVal{
-            .left = static_cast<float>(encoderReading.at(1)),
-            .right = static_cast<float>(encoderReading.at(2))
+            .left = static_cast<float>(left),
+            .right = static_cast<float>(right)
         };
 
-        //LIDAR Data
-        auto lidar_scan = robot_lidar_data.at(i);
+        auto lidar_scan = robot_lidar_data.at(i); //LIDAR Data
 
-        step(timeStep, encoderVal, lidar_scan);
+        step(ts, encoderVal, lidar_scan, i, false);
     }
 
-    /////////////////////////// Plot Graph ///////////////////////////////////////
-    {
-        //Robot Pose
-        std::vector<float> x_data, y_data, theta_data;
-        for (auto [x,y,theta]: all_pose) {
-            x_data.push_back(x);
-            y_data.push_back(y);
-            theta_data.push_back(theta);
-        }
-
-        auto width = computeImageDimensions(x_data, x_true);
-        auto height = computeImageDimensions(y_data, y_true);
-
-        std::vector<std::string> labels = {"Calculated Pose", "True Pose"};
-        std::vector<cv::Scalar> colors = {red, green};
-        cv::Mat pose_image = cv::Mat::zeros(height, width, CV_8UC3);
-
-        plotGraphPoints(pose_image, x_data, y_data, red, height);
-        plotGraphPoints(pose_image, x_true, y_true, green, height);
-        drawLegend(pose_image, labels, colors);
-        cv::imshow("Robot Pose", pose_image);
-    }
-
-
-    //SLAM Map
-    std::vector<float> x_data, y_data, theta_data;
-    for (std::size_t idx = 0; idx < all_maps.size(); idx++) {
-        auto map = all_maps.at(idx); {
-            auto [x,y,_] = all_pose.at(idx);
-            const int x_off = robotMap->m_Offset - static_cast<int>(x / 5.0F);
-            const int y_off = robotMap->m_Offset - static_cast<int>(y / 5.0F);
-            x_data.push_back(x_off);
-            y_data.push_back(y_off);
-        }
-
-        std::cout << "Processing map " << idx << " / " << all_maps.size() << std::endl;
-
-        cv::Mat image;
-        gridToImage(image, map);
-        plotGraphPoints(image, x_data, y_data, red, image.cols);
-        cv::imshow("Lidar Map", image);
-        cv::waitKey(1);
-    }
-
+    cv::waitKey(0);
     return 0;
 }
