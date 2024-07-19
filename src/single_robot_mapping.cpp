@@ -16,7 +16,7 @@ map_environment::map_environment(const float &total_grid_length_millimeters, con
     : m_totalGridLength_millimeters(total_grid_length_millimeters),
       m_gridCellSize_millimeters(grid_cell_length_millimeters),
       m_cellCount(static_cast<int>(total_grid_length_millimeters / grid_cell_length_millimeters)),
-      m_Offset(static_cast<int>(m_cellCount / 2.0F)),
+      m_center(static_cast<int>(m_cellCount / 2.0F)),
       m_gridMap(m_cellCount, m_cellCount) {
     m_gridMap.setConstant(cellState::UNKNOWN);
 }
@@ -32,7 +32,7 @@ bool map_environment::resize_grid(const float &new_grid_length_millimeters) {
         Grid newGrid(newCellCount, newCellCount);
         newGrid.setConstant(cellState::UNKNOWN);
 
-        int offset = (newCellCount - this->m_cellCount) / 2;
+        int offset = (newCellCount - this->m_cellCount) / 2.0F;
 
         // Copy the old grid into the new grid with the new offset
         for (std::size_t y = 0; y < this->m_cellCount; ++y) {
@@ -48,7 +48,7 @@ bool map_environment::resize_grid(const float &new_grid_length_millimeters) {
                     m_totalGridLength_millimeters)
                 << "\nNew Requested Grid Size: " << static_cast<int>(new_grid_length_millimeters) << std::endl;
         this->m_totalGridLength_millimeters = new_grid_length_millimeters;
-        this->m_Offset = offset;
+        this->m_center = static_cast<int>(this->m_cellCount/2.0F);
         return true;
     } else {
         std::cout << "Cannot Resize the Grid." << "\nCurrent size is: " << static_cast<int>(this->
@@ -63,7 +63,7 @@ std::size_t map_environment::calculate_grid_cell_count(const float &grid_length_
     return static_cast<std::size_t>(grid_length_millimeters / this->m_gridCellSize_millimeters);
 }
 
-Grid map_environment::updateMap(const std::vector<coordinate_t> &lidarScan, const pose_t &current_pose) {
+Grid map_environment::updateMap_robot_origin_frame(const std::vector<coordinate_t> &lidarScan, const pose_t &current_pose) {
     for (size_t i = 0; i < lidarScan.size(); i++) {
         auto [x_scan, y_scan] = lidarScan.at(i);
         if (x_scan != -1.0F) {
@@ -75,13 +75,13 @@ Grid map_environment::updateMap(const std::vector<coordinate_t> &lidarScan, cons
             // Check grid boundaries and resize if necessary
             if ((2.0F * x > this->m_totalGridLength_millimeters) || (2.0F * y > this->m_totalGridLength_millimeters)) {
                 float new_length = std::max(x, y);
-                new_length *= 4.0f;
+                new_length *= 3.0f;
                 resize_grid(new_length);
             }
 
             // Convert to grid indices
-            int x_off = m_Offset + static_cast<int>(x / this->m_gridCellSize_millimeters);
-            int y_off = m_Offset + static_cast<int>(y / this->m_gridCellSize_millimeters);
+            int x_off = m_center + static_cast<int>(x / this->m_gridCellSize_millimeters);
+            int y_off = m_center + static_cast<int>(y / this->m_gridCellSize_millimeters);
             m_gridMap(y_off, x_off) = cellState::FILLED;
         }
     }

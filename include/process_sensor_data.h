@@ -9,6 +9,8 @@
 #ifndef PROCESS_SENSOR_DATA_H
 #define PROCESS_SENSOR_DATA_H
 
+#include <cmath>
+#include <optional>
 #include <vector>
 
 typedef struct {
@@ -46,15 +48,24 @@ public:
         std::size_t number_of_lidar_data_points,
         value_range_t scan_distance,
         value_range_t angle_range_Radians,
-        float detection_threshold);
+        float detection_threshold,
+        const pose_t transformation_to_robot_frame,
+        const float obstacle_offset,
+        const float mountingAngleOffset);
 
     ~lidar_data();
 
-    [[nodiscard]] std::pair<std::vector<coordinate_t>, std::vector<coordinate_t> > process_lidar_scan(
+    [[nodiscard]] std::tuple<std::vector<coordinate_t>, std::vector<coordinate_t> , std::vector<coordinate_t> > process_lidar_scan_to_robot_frame(
         const std::vector<float> &lidar_scan,
         const pose_t current_pose);
 
-    [[nodiscard]] std::vector<coordinate_t> get_obstacle_coordinates(void);
+    [[nodiscard]] std::vector<coordinate_t> get_coordinates_in_robot_origin_frame(
+        const std::vector<coordinate_t> local_frame_coordinates,
+        const pose_t current_pose);
+
+    [[nodiscard]] std::vector<coordinate_t> transform_from_lidar_frame_to_robot_frame(
+        const std::vector<coordinate_t> local_frame_coordinates);
+
 
 private:
     const std::size_t m_totalLidarDataPoints; // Total LIDAR data points
@@ -62,10 +73,12 @@ private:
     const value_range_t m_angleRange_Radians; // LIDAR angle range
     const float m_detectionThreshold; //Threshold Value to Consider an object as obstacle
     const float m_anglePerRayIncrement_Radians;
-    std::vector<coordinate_t> m_obstacle_coordinates;
+    const pose_t m_transformation_to_robot_frame;
+    const float m_obstacle_offset;
+    const float m_mountingAngleOffset;
 
 private:
-    coordinate_t m_convert_ray_to_position(pose_t current_pose, float ray_id, float ray_value) const;
+    [[nodiscard]] coordinate_t m_convert_ray_to_position(pose_t current_pose, float ray_id, float ray_value) const;
 
     [[nodiscard]] std::vector<float> calculate_derivative(const std::vector<float> &data) const;
 
@@ -90,16 +103,13 @@ public:
         float encoder_ticks_per_mm,
         float distance_between_wheels_in_mm,
         pose_t starting_pose,
-        encoder_ticks_t starting_encoder_ticks,
-        pose_t transform_to_another_frame);
+        encoder_ticks_t starting_encoder_ticks);
 
     ~robot_odometry();
 
-    [[nodiscard]] pose_t get_current_pose() const;
 
     [[nodiscard]] pose_t m_update_pose(encoder_ticks_t new_encoder_ticks); // Uses encoder ticks as input
     void m_update_pose(float x, float y, float theta); // Reformats the pose in required format
-    [[nodiscard]] pose_t transformFrame(pose_t currentPose) const; // Declaration without extra qualification
 
 
 private:
@@ -107,7 +117,6 @@ private:
     const float m_robotWidthBetweenWheels_millimeters;
     encoder_ticks_t m_currentEncoderTickValue;
     pose_t m_robotPose;
-    pose_t m_transformationMatrixToSwitchFrame;
 
 private:
     void m_calculate_motion(float dL, float dR);

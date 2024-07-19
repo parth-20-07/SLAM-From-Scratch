@@ -1,7 +1,7 @@
 # Python routines to inspect a ikg LEGO robot logfile.
 # Author: Claus Brenner, 28.10.2012
 from tkinter import *
-import tkinter.filedialog as tkFileDialog
+from tkinter import filedialog
 from lego_robot import *
 from math import sin, cos, pi
 
@@ -19,7 +19,7 @@ max_scanner_range = 2200.0
 
 class DrawableObject(object):
     def draw(self, at_step):
-        print ("To be overwritten - will draw a certain point in time:", at_step)
+        print("To be overwritten - will draw a certain point in time:", at_step)
 
     def background_draw(self):
         print("Background draw.")
@@ -39,7 +39,7 @@ class Trajectory(DrawableObject):
         if self.points:
             p_xy_only = []
             for p in self.points:
-                self.canvas.create_oval(\
+                self.canvas.create_oval( \
                     p[0]-self.point_size2, p[1]-self.point_size2,
                     p[0]+self.point_size2, p[1]+self.point_size2,
                     fill=self.background_color, outline="")
@@ -54,15 +54,15 @@ class Trajectory(DrawableObject):
             self.cursor_object2 = None
         if at_step < len(self.points):
             p = self.points[at_step]
-            self.cursor_object = self.canvas.create_oval(\
+            self.cursor_object = self.canvas.create_oval( \
                 p[0]-self.point_size2-1, p[1]-self.point_size2-1,
                 p[0]+self.point_size2+1, p[1]+self.point_size2+1,
                 fill=self.cursor_color, outline="")
             if len(p) > 2:
                 self.cursor_object2 = self.canvas.create_line(p[0], p[1],
-                    p[0] + cos(p[2]) * 50,
-                    p[1] - sin(p[2]) * 50,
-                    fill = self.cursor_color)
+                                                              p[0] + cos(p[2]) * 50,
+                                                              p[1] - sin(p[2]) * 50,
+                                                              fill = self.cursor_color)
 
 class ScannerData(DrawableObject):
     def __init__(self, list_of_scans, canvas, canvas_extents, scanner_range):
@@ -134,7 +134,7 @@ class Landmarks(DrawableObject):
     def draw(self, at_step):
         # Landmarks are background only.
         pass
-    
+
 class Points(DrawableObject):
     def __init__(self, points, canvas, color = "red", radius = 5):
         self.points = points
@@ -148,7 +148,7 @@ class Points(DrawableObject):
 
     def draw(self, at_step):
         if self.cursor_objects:
-            map(self.canvas.delete, self.cursor_objects)
+            list(map(self.canvas.delete, self.cursor_objects))
             self.cursor_objects = []
         if at_step < len(self.points):
             for c in self.points[at_step]:
@@ -184,7 +184,7 @@ def slider_moved(index):
     info.config(text=logfile.info(i))
 
 def add_file():
-    filename = tkFileDialog.askopenfilename(filetypes = [("all files", ".*"), ("txt files", ".txt")])
+    filename = filedialog.askopenfilename(filetypes = [("all files", ".*"), ("txt files", ".txt")])
     if filename and filename not in all_file_names:
         all_file_names.append(filename)
         load_data()
@@ -204,7 +204,7 @@ def load_data():
     # Insert: reference trajectory.
     positions = [to_world_canvas(pos, canvas_extents, world_extents) for pos in logfile.reference_positions]
     draw_objects.append(Trajectory(positions, world_canvas,
-        cursor_color="red", background_color="#FFB4B4"))
+                                   cursor_color="red", background_color="#FFB4B4"))
 
     # Insert: filtered trajectory.
     if logfile.filtered_positions:
@@ -213,24 +213,24 @@ def load_data():
         else:
             positions = [to_world_canvas(pos, canvas_extents, world_extents) for pos in logfile.filtered_positions]
         draw_objects.append(Trajectory(positions, world_canvas,
-            cursor_color="blue", background_color="lightblue"))
+                                       cursor_color="blue", background_color="lightblue"))
 
     # Insert: scanner data.
     draw_objects.append(ScannerData(logfile.scan_data, sensor_canvas,
-        sensor_canvas_extents, max_scanner_range))
+                                    sensor_canvas_extents, max_scanner_range))
 
     # Insert: detected cylinders, in scanner coord system.
     if logfile.detected_cylinders:
         positions = [[to_sensor_canvas(pos, sensor_canvas_extents, max_scanner_range)
-                     for pos in cylinders_one_scan ]
+                      for pos in cylinders_one_scan ]
                      for cylinders_one_scan in logfile.detected_cylinders ]
         draw_objects.append(Points(positions, sensor_canvas, "#88FF88"))
 
     # Insert: detected cylinders, in world coord system.
     if logfile.detected_cylinders and logfile.filtered_positions and \
-        len(logfile.filtered_positions[0]) > 2:
+            len(logfile.filtered_positions[0]) > 2:
         positions = []
-        for i in xrange(min(len(logfile.detected_cylinders), len(logfile.filtered_positions))):
+        for i in range(min(len(logfile.detected_cylinders), len(logfile.filtered_positions))):
             this_pose_positions = []
             pos = logfile.filtered_positions[i]
             dx = cos(pos[2])

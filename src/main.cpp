@@ -12,6 +12,7 @@
 #include <string>
 #include <opencv2/opencv.hpp>
 #include "matplotlibcpp.h"
+#include <fmt/core.h>
 
 namespace fs = std::filesystem;
 namespace plt = matplotlibcpp;
@@ -92,8 +93,8 @@ void plotGraphPoints(cv::Mat &image, const std::vector<T> &x, const std::vector<
 
 void plotGraphPoints(cv::Mat &image, const std::vector<pose_t> &pose, const cv::Scalar &color, int height) {
     for (const auto &[x, y, theta]: pose) {
-        const int x_off = robotMap->m_Offset + static_cast<int>(x / grid_size);
-        const int y_off = height - (robotMap->m_Offset + static_cast<int>(y / grid_size)) - 1;
+        const int x_off = robotMap->m_center + static_cast<int>(x / grid_size);
+        const int y_off = height - (robotMap->m_center + static_cast<int>(y / grid_size)) - 1;
         cv::circle(image, cv::Point(x_off, y_off), 2, color, cv::FILLED);
 
         // Calculate the end point of the heading line
@@ -103,6 +104,16 @@ void plotGraphPoints(cv::Mat &image, const std::vector<pose_t> &pose, const cv::
 
         // Draw the heading line
         cv::line(image, cv::Point(x_off, y_off), cv::Point(x_end, y_end), color, 1);
+    }
+}
+
+
+void plotGraphPoints(cv::Mat &image, const std::vector<coordinate_t> &coordinates, const cv::Scalar &color,
+                     int height) {
+    for (const auto &[x, y]: coordinates) {
+        const int x_off = robotMap->m_center + static_cast<int>(x / grid_size);
+        const int y_off = height - (robotMap->m_center + static_cast<int>(y / grid_size)) - 1;
+        cv::circle(image, cv::Point(x_off, y_off), 10, color, cv::FILLED);
     }
 }
 
@@ -128,6 +139,21 @@ void plotLineGraph(cv::Mat &image, const std::vector<coordinate_t> &coordinates,
         const int yCoord1 = height - static_cast<int>(y1);
         const int xCoord2 = height - static_cast<int>(x2);
         const int yCoord2 = height - static_cast<int>(y2);
+        cv::line(image, cv::Point(xCoord1, yCoord1), cv::Point(xCoord2, yCoord2), color, 5);
+    }
+}
+
+
+void plotLinesObstacles(cv::Mat &image, const std::vector<coordinate_t> &coordinates, const cv::Scalar &color,
+                        int height) {
+    // Draw lines
+    for (size_t i = 1; i < coordinates.size(); ++i) {
+        auto [x1, y1] = coordinates.at(i - 1);
+        auto [x2, y2] = coordinates.at(i);
+        const int xCoord1 = robotMap->m_center + static_cast<int>(x1 / grid_size);
+        const int yCoord1 = height - (robotMap->m_center + static_cast<int>(y1 / grid_size)) - 1;
+        const int xCoord2 = robotMap->m_center + static_cast<int>(x2 / grid_size);
+        const int yCoord2 = height - (robotMap->m_center + static_cast<int>(y2 / grid_size)) - 1;
         cv::line(image, cv::Point(xCoord1, yCoord1), cv::Point(xCoord2, yCoord2), color, 2);
     }
 }
@@ -179,42 +205,51 @@ void drawLegend(cv::Mat &image, const std::vector<std::string> &labels, const st
     }
 }
 
-std::vector<std::vector<coordinate_t> > lidar_coordinates;
-std::vector<pose_t> all_pose;
-std::vector<Grid> all_maps;
+std::vector<pose_t> all_pose_robot_global_frame;
+std::vector<std::vector<coordinate_t> > obstacles_in_lidar_frame;
 cv::Mat slam_map_image;
 
 void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &lidar_data, int idx, bool plot) {
-    const pose_t current_pose = robotOdomObject->m_update_pose(encoderTick);
+    const pose_t current_pose_global_frame = robotOdomObject->m_update_pose(encoderTick);
 
-    const auto [lidar_map, obstacles] = lidarObject->process_lidar_scan(lidar_data, current_pose);
-    auto currentMap = robotMap->updateMap(lidar_map, current_pose);
+    const auto [lidar_map_robot_frame, obstacles_robot_frame, obstacle_lidar_frame] = lidarObject->process_lidar_scan_to_robot_frame(
+        lidar_data, current_pose_global_frame);
+    auto currentMap_robot_origin_frame = robotMap->updateMap_robot_origin_frame(
+        obstacles_robot_frame, current_pose_global_frame);
 
-    all_pose.push_back(current_pose);
-    lidar_coordinates.push_back(lidar_map);
-    all_maps.push_back(currentMap);
+    all_pose_robot_global_frame.push_back(current_pose_global_frame);
+    obstacles_in_lidar_frame.push_back(obstacle_lidar_frame);
 
-    gridToImage(slam_map_image, currentMap);
-    plotGraphPoints(slam_map_image, all_pose, red, slam_map_image.cols);
+    const auto global_frame_obstacles = lidarObject->get_coordinates_in_robot_origin_frame(
+        obstacles_robot_frame, current_pose_global_frame);
+    const auto global_frame_lidar = lidarObject->get_coordinates_in_robot_origin_frame(
+        lidar_map_robot_frame, current_pose_global_frame);
+
+
+    // std::cout << "Frame: " << std::to_string(idx) << "\n";
+    gridToImage(slam_map_image, currentMap_robot_origin_frame);
+    plotGraphPoints(slam_map_image, all_pose_robot_global_frame, red, slam_map_image.cols);
+    plotLinesObstacles(slam_map_image, global_frame_obstacles, green, slam_map_image.cols);
+    plotGraphPoints(slam_map_image, global_frame_obstacles, blue, slam_map_image.cols);
     cv::imshow("Lidar Map", slam_map_image);
     cv::waitKey(10);
     if (plot) {
         // Plot with matplotlib
         plt::figure_size(800, 800);
         std::vector<float> x, y;
-        for (auto scan: lidar_map) {
+        for (auto scan: global_frame_lidar) {
             x.push_back(scan.x);
             y.push_back(scan.y);
         }
         plt::named_plot("lidar ", x, y, "b");
         std::vector<float> x_obs, y_obs;
-        for (auto obs: obstacles) {
+        for (auto obs: global_frame_obstacles) {
             x_obs.push_back(obs.x);
             y_obs.push_back(obs.y);
         }
         plt::named_plot("Obstacles ", x_obs, y_obs, "y-o");
-        plt::named_plot("Current Pose", std::vector<float>{current_pose.x / grid_size},
-                        std::vector<float>{current_pose.y / grid_size}, "r-o");
+        plt::named_plot("Current Pose", std::vector<float>{current_pose_global_frame.x},
+                        std::vector<float>{current_pose_global_frame.y}, "r-o");
         plt::legend();
         plt::xlabel("position");
         plt::ylabel("Sensor Reading");
@@ -234,21 +269,6 @@ int main(int argc, char **argv) {
     pos = path.find_last_of('/');
     if (pos != std::string::npos) {
         path = path.substr(0, pos);
-    }
-
-    fs::path results_dir = path + "/results";
-
-    // Delete the directory if it exists
-    if (fs::exists(results_dir)) {
-        fs::remove_all(results_dir);
-        std::cout << "Deleted directory: " << results_dir << std::endl;
-    }
-
-    // Create the directory
-    if (fs::create_directory(results_dir)) {
-        std::cout << "Created directory: " << results_dir << std::endl;
-    } else {
-        std::cerr << "Failed to create directory: " << results_dir << std::endl;
     }
 
     /////////////////////////// Read Data ///////////////////////////////////////
@@ -288,26 +308,27 @@ int main(int argc, char **argv) {
         encoder_ticks_t{
             static_cast<float>(motor_ticks.at(0).at(1)),
             static_cast<float>(motor_ticks.at(0).at(2))
-        },
-        pose_t{
-            0.0F,
-            0.0F,
-            0.0F
         });
 
     //Lidar Scanning
     lidarObject = std::make_unique<lidar_data>(
         robot_lidar_data.at(0).size(),
-        value_range_t{20.0F, 350.0F},
-        value_range_t{-2.09466781009F, 1.95504146993F},
-        100.0F
-    );
+        value_range_t{20.0F, 2200.0F},
+        value_range_t{-2.0946678100889633F, 1.9489055467778735F},
+        100.0F,
+        pose_t{
+            .x = 0.0F,
+            .y = 30.0F,
+            .theta = 0.0F
+        },
+        90.0F,
+        -0.06981317007977318F);
 
     // Environment Map
     robotMap = std::make_unique<map_environment>(100.0, grid_size);
 
     /////////////////////////// Run SLAM ///////////////////////////////////////
-    for (std::size_t i = 2; i < motor_ticks.size(); i++) {
+    for (std::size_t i = 0; i < motor_ticks.size(); i++) {
         //Encoder Data
         auto motor_tick = motor_ticks.at(i);
         int ts = motor_tick.at(0);
@@ -323,6 +344,55 @@ int main(int argc, char **argv) {
         step(ts, encoderVal, lidar_scan, i, false);
     }
 
-    cv::waitKey(0);
+    /////////////////////////// Save Data ///////////////////////////////////////
+    fs::path results_dir = path + "/results";
+
+    // Delete the directory if it exists
+    if (fs::exists(results_dir)) {
+        fs::remove_all(results_dir);
+        std::cout << "Deleted directory: " << results_dir << std::endl;
+    }
+
+    // Create the directory
+    if (fs::create_directory(results_dir)) {
+        std::cout << "Created directory: " << results_dir << std::endl;
+    } else {
+        std::cerr << "Failed to create directory: " << results_dir << std::endl;
+    }
+    //Motor Ticks
+    {
+        std::string path = results_dir;
+        path.append("/poses_from_ticks.txt");
+        std::ofstream file(path, std::ios::out);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file for writing: " << path << std::endl;
+        } else {
+            for (auto [x,y,theta]: all_pose_robot_global_frame) {
+                file << fmt::format("F\t{:5f}\t{:5f}\t{:5f}\n", x, y, theta);
+            }
+            file.close();
+            std::cout << "Data written to file: " << path << std::endl;
+        }
+    }
+
+    //Obstacle Positions
+    {
+        std::string path = results_dir;
+        path.append("/cylinders.txt");
+        std::ofstream file(path, std::ios::out);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file for writing: " << path << std::endl;
+        } else {
+            for (auto obstacles: obstacles_in_lidar_frame) {
+                file << "D C\t";
+                for (auto [x,y]: obstacles) {
+                    file << fmt::format("{:5f}\t{:5f}\t", x, y);
+                }
+                file << "\n";
+            }
+            file.close();
+            std::cout << "Data written to file: " << path << std::endl;
+        }
+    }
     return 0;
 }

@@ -39,7 +39,7 @@ public:
 
     ~map_environment();
 
-    Grid updateMap(const std::vector<coordinate_t> &lidarScan, const pose_t &current_pose);
+    Grid updateMap_robot_origin_frame(const std::vector<coordinate_t> &lidarScan, const pose_t &current_pose);
     /* --------------------------------- Getters -------------------------------- */
     [[nodiscard]] const float getGridLength() const noexcept { return this->m_totalGridLength_millimeters; }
     [[nodiscard]] const Grid &getGridMap() const noexcept { return this->m_gridMap; }
@@ -47,7 +47,7 @@ public:
 
     bool resize_grid(const float &new_grid_length_millimeters);
 
-    int m_Offset;
+    int m_center;
 
 private:
     /* ---------------------------- Member Functions ---------------------------- */
