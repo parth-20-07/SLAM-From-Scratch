@@ -159,8 +159,8 @@ void plotLinesObstacles(cv::Mat &image, const std::vector<coordinate_t> &coordin
 }
 
 void gridToImage(cv::Mat &image, const Grid &grid) {
-    int rows = grid.rows();
-    int cols = grid.cols();
+    const int rows = grid.rows();
+    const int cols = grid.cols();
     image = cv::Mat(rows, cols, CV_8UC3);
 
     // Define colors for each cell state
@@ -212,8 +212,9 @@ cv::Mat slam_map_image;
 void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &lidar_data, int idx, bool plot) {
     const pose_t current_pose_global_frame = robotOdomObject->m_update_pose(encoderTick);
 
-    const auto [lidar_map_robot_frame, obstacles_robot_frame, obstacle_lidar_frame] = lidarObject->process_lidar_scan_to_robot_frame(
-        lidar_data, current_pose_global_frame);
+    const auto [lidar_map_robot_frame, obstacles_robot_frame, obstacle_lidar_frame] = lidarObject->
+            process_lidar_scan_to_robot_frame(
+                lidar_data, current_pose_global_frame);
     auto currentMap_robot_origin_frame = robotMap->updateMap_robot_origin_frame(
         obstacles_robot_frame, current_pose_global_frame);
 
@@ -229,8 +230,8 @@ void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &l
     // std::cout << "Frame: " << std::to_string(idx) << "\n";
     gridToImage(slam_map_image, currentMap_robot_origin_frame);
     plotGraphPoints(slam_map_image, all_pose_robot_global_frame, red, slam_map_image.cols);
-    plotLinesObstacles(slam_map_image, global_frame_obstacles, green, slam_map_image.cols);
-    plotGraphPoints(slam_map_image, global_frame_obstacles, blue, slam_map_image.cols);
+    // plotLinesObstacles(slam_map_image, global_frame_obstacles, green, slam_map_image.cols);
+    // plotGraphPoints(slam_map_image, global_frame_obstacles, blue, slam_map_image.cols);
     cv::imshow("Lidar Map", slam_map_image);
     cv::waitKey(10);
     if (plot) {
@@ -321,7 +322,6 @@ int main(int argc, char **argv) {
             .y = 30.0F,
             .theta = 0.0F
         },
-        90.0F,
         -0.06981317007977318F);
 
     // Environment Map
@@ -344,55 +344,5 @@ int main(int argc, char **argv) {
         step(ts, encoderVal, lidar_scan, i, false);
     }
 
-    /////////////////////////// Save Data ///////////////////////////////////////
-    fs::path results_dir = path + "/results";
-
-    // Delete the directory if it exists
-    if (fs::exists(results_dir)) {
-        fs::remove_all(results_dir);
-        std::cout << "Deleted directory: " << results_dir << std::endl;
-    }
-
-    // Create the directory
-    if (fs::create_directory(results_dir)) {
-        std::cout << "Created directory: " << results_dir << std::endl;
-    } else {
-        std::cerr << "Failed to create directory: " << results_dir << std::endl;
-    }
-    //Motor Ticks
-    {
-        std::string path = results_dir;
-        path.append("/poses_from_ticks.txt");
-        std::ofstream file(path, std::ios::out);
-        if (!file.is_open()) {
-            std::cerr << "Failed to open file for writing: " << path << std::endl;
-        } else {
-            for (auto [x,y,theta]: all_pose_robot_global_frame) {
-                file << fmt::format("F\t{:5f}\t{:5f}\t{:5f}\n", x, y, theta);
-            }
-            file.close();
-            std::cout << "Data written to file: " << path << std::endl;
-        }
-    }
-
-    //Obstacle Positions
-    {
-        std::string path = results_dir;
-        path.append("/cylinders.txt");
-        std::ofstream file(path, std::ios::out);
-        if (!file.is_open()) {
-            std::cerr << "Failed to open file for writing: " << path << std::endl;
-        } else {
-            for (auto obstacles: obstacles_in_lidar_frame) {
-                file << "D C\t";
-                for (auto [x,y]: obstacles) {
-                    file << fmt::format("{:5f}\t{:5f}\t", x, y);
-                }
-                file << "\n";
-            }
-            file.close();
-            std::cout << "Data written to file: " << path << std::endl;
-        }
-    }
-    return 0;
+    return EXIT_SUCCESS;
 }

@@ -30,8 +30,8 @@ typedef struct {
 } encoder_ticks_t;
 
 typedef struct {
-    float ray_position;
-    float average_depth;
+    std::size_t ray_index;
+    float depth;
 } obstacle_location_t;
 
 typedef struct {
@@ -50,7 +50,6 @@ public:
         value_range_t angle_range_Radians,
         float detection_threshold,
         const pose_t transformation_to_robot_frame,
-        const float obstacle_offset,
         const float mountingAngleOffset);
 
     ~lidar_data();
@@ -74,7 +73,6 @@ private:
     const float m_detectionThreshold; //Threshold Value to Consider an object as obstacle
     const float m_anglePerRayIncrement_Radians;
     const pose_t m_transformation_to_robot_frame;
-    const float m_obstacle_offset;
     const float m_mountingAngleOffset;
 
 private:

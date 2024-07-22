@@ -16,7 +16,6 @@ lidar_data::lidar_data(
     value_range_t angle_range_Radians,
     float detection_threshold,
     const pose_t transformation_to_robot_frame,
-    const float obstacle_offset,
     const float mountingAngleOffset)
     : m_totalLidarDataPoints(number_of_lidar_data_points),
       m_scanDistance(scan_distance),
@@ -24,7 +23,6 @@ lidar_data::lidar_data(
       m_detectionThreshold(detection_threshold),
       m_anglePerRayIncrement_Radians((m_angleRange_Radians.max - m_angleRange_Radians.min) / m_totalLidarDataPoints),
       m_transformation_to_robot_frame(transformation_to_robot_frame),
-      m_obstacle_offset(obstacle_offset),
       m_mountingAngleOffset(mountingAngleOffset) {
 }
 
@@ -58,38 +56,32 @@ std::vector<float> lidar_data::calculate_derivative(const std::vector<float> &da
 std::vector<obstacle_location_t> lidar_data::find_obstacles(
     const std::vector<float> &data,
     const std::vector<float> &derivative_data) const {
-    std::vector<obstacle_location_t> obstacles;
+    std::vector<obstacle_location_t> all_obstacles; //All the Obstacles in the scan
 
     for (std::size_t idx = 0; idx < data.size(); idx++) {
         if (derivative_data.at(idx) < 0.0F) {
             //Low Trigger Detected for Obstacle
-            obstacle_location_t obstacle;
-            int num_of_rays = 0;
-            int sum_of_rays = 0;
-            float depth_sum = 0.0F;
+            std::vector<obstacle_location_t> obstacles_in_derivative; //Obstacle Indexes in the current derivative
             while (idx < data.size() && derivative_data.at(idx) <= 0) {
                 if (data.at(idx) > m_scanDistance.min) {
-                    num_of_rays++;
-                    sum_of_rays += static_cast<int>(idx);
-                    depth_sum += data.at(idx);
+                    obstacle_location_t obstacle{.ray_index = idx, .depth =  data.at(idx)};
+                    obstacles_in_derivative.push_back(obstacle);
                 }
                 idx++;
             }
 
             if (idx == data.size())
                 break;
-            if (derivative_data.at(idx) > 0) {
+            // if (derivative_data.at(idx) > 0) {
                 //Obstacle Reading Complete
-                obstacle.average_depth = (depth_sum / static_cast<float>(num_of_rays)) + m_obstacle_offset;
-                obstacle.ray_position = static_cast<float>(sum_of_rays) / static_cast<float>(num_of_rays);
-                obstacles.push_back(obstacle);
-            } else {
-                //Detected Another Obstacle in front of current one
-                // idx--;
-            }
+                for (obstacle_location_t obstacle: obstacles_in_derivative)
+                    all_obstacles.push_back(obstacle);
+            // } else {
+            //     //Detected Another Obstacle in front of current one
+            // }
         }
     }
-    return obstacles;
+    return all_obstacles;
 }
 
 [[nodiscard]] std::vector<coordinate_t> lidar_data::convert_obstacle_to_coordinate_in_lidar_frame(
@@ -98,8 +90,8 @@ std::vector<obstacle_location_t> lidar_data::find_obstacles(
     std::vector<coordinate_t> obstacle_positions;
     for (std::size_t idx = 0; idx < obstacles.size(); idx++) {
         auto obstacle = obstacles.at(idx);
-        float ray_id = obstacle.ray_position;
-        float ray_value = obstacle.average_depth;
+        float ray_id = obstacle.ray_index;
+        float ray_value = obstacle.depth;
         obstacle_positions.emplace_back(this->m_convert_ray_to_position(
             currentPose,
             ray_id,
