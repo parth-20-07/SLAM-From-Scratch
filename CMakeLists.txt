@@ -13,7 +13,8 @@ find_package(OpenCV REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
 set(pybind11_DIR "~/.local/lib/python3.8/site-packages/pybind11/share/cmake/pybind11")
 find_package(pybind11 REQUIRED)
-find_package(fmt REQUIRED)  # Add this line to find the fmt library
+find_package(fmt REQUIRED)
+find_package(Threads REQUIRED)
 
 # Add Eigen to the include directories
 include_directories(
@@ -24,7 +25,7 @@ include_directories(
         ${Python3_NumPy_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}/ext/matplotlibcpp
         ${pybind11_INCLUDE_DIRS}
-        ${fmt_INCLUDE_DIRS}  # Include fmt directories
+        ${fmt_INCLUDE_DIRS}
 )
 
 add_executable(slam
@@ -39,6 +40,7 @@ target_link_libraries(slam
         Python3::NumPy
         pybind11::module
         fmt::fmt  # Link the fmt library
+        ${CMAKE_THREAD_LIBS_INIT}  # Link the pthread library
 )
 
 # Enable debug info in executable

@@ -7,6 +7,9 @@
 
 #include "process_sensor_data.h"
 
+#include <mutex>
+#include <single_robot_mapping.h>
+#include <thread>
 #include <tuple>
 
 // Constructor for lidar_data
@@ -64,7 +67,7 @@ std::vector<obstacle_location_t> lidar_data::find_obstacles(
             std::vector<obstacle_location_t> obstacles_in_derivative; //Obstacle Indexes in the current derivative
             while (idx < data.size() && derivative_data.at(idx) <= 0) {
                 if (data.at(idx) > m_scanDistance.min) {
-                    obstacle_location_t obstacle{.ray_index = idx, .depth =  data.at(idx)};
+                    obstacle_location_t obstacle{.ray_index = idx, .depth = data.at(idx)};
                     obstacles_in_derivative.push_back(obstacle);
                 }
                 idx++;
@@ -73,9 +76,9 @@ std::vector<obstacle_location_t> lidar_data::find_obstacles(
             if (idx == data.size())
                 break;
             // if (derivative_data.at(idx) > 0) {
-                //Obstacle Reading Complete
-                for (obstacle_location_t obstacle: obstacles_in_derivative)
-                    all_obstacles.push_back(obstacle);
+            //Obstacle Reading Complete
+            for (obstacle_location_t obstacle: obstacles_in_derivative)
+                all_obstacles.push_back(obstacle);
             // } else {
             //     //Detected Another Obstacle in front of current one
             // }
@@ -123,13 +126,28 @@ lidar_data::process_lidar_scan_to_robot_frame(
     const std::vector<float> &lidar_scan,
     const pose_t current_pose) {
     const auto derivative = this->calculate_derivative(lidar_scan);
-    const auto obstacles = this->find_obstacles(lidar_scan, derivative);
-    auto lidar_map_lidar_frame = this->convert_scan_to_coordinate_in_lidar_frame(lidar_scan, current_pose);
-    auto obstacles_coordinates_lidar_frame = this->convert_obstacle_to_coordinate_in_lidar_frame(
-        obstacles, current_pose);
-    auto lidar_map_robot_frame = this->transform_from_lidar_frame_to_robot_frame(lidar_map_lidar_frame);
-    auto obstacles_coordinates_robot_frame = this->transform_from_lidar_frame_to_robot_frame(
-        obstacles_coordinates_lidar_frame);
+
+    const auto obstacles =
+            this->find_obstacles(
+                lidar_scan,
+                derivative);
+
+    auto lidar_map_lidar_frame =
+            this->convert_scan_to_coordinate_in_lidar_frame(
+                lidar_scan,
+                current_pose);
+
+    auto obstacles_coordinates_lidar_frame =
+            this->convert_obstacle_to_coordinate_in_lidar_frame(
+                obstacles,
+                current_pose);
+
+    auto lidar_map_robot_frame =
+            this->transform_from_lidar_frame_to_robot_frame(lidar_map_lidar_frame);
+
+    auto obstacles_coordinates_robot_frame =
+            this->transform_from_lidar_frame_to_robot_frame(
+                obstacles_coordinates_lidar_frame);
 
     return std::make_tuple<std::vector<coordinate_t>, std::vector<coordinate_t>, std::vector<coordinate_t> >(
         std::move(lidar_map_robot_frame),
@@ -239,4 +257,96 @@ void robot_odometry::m_calculate_motion(const float dL, const float dR) {
         newY = cY - (RDistance * std::cos(newTheta));
     }
     this->m_robotPose = pose_t{newX, newY, newTheta};
+}
+
+
+//////////////////////////////////// Localization ////////////////////////////////////////////
+
+std::vector<float> calculateDistances(const std::vector<coordinate_t> &obstacles, float grid_size);
+
+// Calculate distances between obstacles
+std::vector<float> calculateDistances(const std::vector<coordinate_t> &obstacles, float grid_size) {
+    std::vector<float> distances;
+
+    for (size_t i = 0; i < obstacles.size(); ++i) {
+        for (size_t j = i + 1; j < obstacles.size(); ++j) {
+            float dx = (obstacles[j].x - obstacles[i].x) / grid_size;
+            float dy = (obstacles[j].y - obstacles[i].y) / grid_size;
+            float distance = std::sqrt(dx * dx + dy * dy);
+            distances.push_back(distance);
+        }
+    }
+
+    return distances;
+}
+
+// Localize and estimate pose
+pose_t localize_and_estimate_pose(const Grid &map, lidar_data *lidarObject,
+                                  const std::vector<std::vector<float>> &lidar_scans,
+                                  const float grid_size) {
+    static pose_t origin_pose = {0, 0, 0};
+    std::vector<pose_t> possible_poses;
+    std::mutex poses_mutex;
+
+    auto process_scan = [&](const std::vector<float> &lidar_scan) {
+        const auto [_, obstacles_robot_frame, obstacle_lidar_frame] =
+                lidarObject->process_lidar_scan_to_robot_frame(lidar_scan, origin_pose);
+
+        auto distances = calculateDistances(obstacle_lidar_frame, grid_size);
+
+        for (size_t x = 0; x < map.rows(); x++) {
+            for (size_t y = 0; y < map.cols(); y++) {
+                if (map(y, x) != cellState::FILLED) {
+                    continue;
+                }
+
+                for (float theta = -M_PI; theta < M_PI; theta += 0.1f) {
+                    pose_t test_pose = {x * grid_size, y * grid_size, theta};
+                    bool match_found = true;
+
+                    std::vector<coordinate_t> transformed_obstacles;
+                    for (const auto &obstacle : obstacle_lidar_frame) {
+                        float transformed_x = test_pose.x + obstacle.x * cos(test_pose.theta) - obstacle.y * sin(test_pose.theta);
+                        float transformed_y = test_pose.y + obstacle.x * sin(test_pose.theta) + obstacle.y * cos(test_pose.theta);
+                        transformed_obstacles.push_back({transformed_x, transformed_y});
+                    }
+
+                    auto transformed_distances = calculateDistances(transformed_obstacles, grid_size);
+
+                    if (transformed_distances.size() != distances.size()) {
+                        continue;
+                    }
+
+                    for (size_t i = 0; i < distances.size(); ++i) {
+                        if (std::abs(distances[i] - transformed_distances[i]) > 0.1) {
+                            match_found = false;
+                            break;
+                        }
+                    }
+
+                    if (match_found) {
+                        std::lock_guard<std::mutex> lock(poses_mutex);
+                        possible_poses.push_back(test_pose);
+                    }
+                }
+            }
+        }
+    };
+
+    std::vector<std::thread> threads;
+    for (const auto &lidar_scan : lidar_scans) {
+        threads.emplace_back(process_scan, std::ref(lidar_scan));
+    }
+
+    for (auto &thread : threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+
+    if (possible_poses.empty()) {
+        return {0, 0, 0};
+    }
+
+    return possible_poses[0];
 }

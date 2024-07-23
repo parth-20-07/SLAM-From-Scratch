@@ -207,6 +207,7 @@ void drawLegend(cv::Mat &image, const std::vector<std::string> &labels, const st
 
 std::vector<pose_t> all_pose_robot_global_frame;
 std::vector<std::vector<coordinate_t> > obstacles_in_lidar_frame;
+Grid map;
 cv::Mat slam_map_image;
 
 void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &lidar_data, int idx, bool plot) {
@@ -225,7 +226,7 @@ void step(int ts, const encoder_ticks_t encoderTick, const std::vector<float> &l
         obstacles_robot_frame, current_pose_global_frame);
     const auto global_frame_lidar = lidarObject->get_coordinates_in_robot_origin_frame(
         lidar_map_robot_frame, current_pose_global_frame);
-
+    map = currentMap_robot_origin_frame;
 
     // std::cout << "Frame: " << std::to_string(idx) << "\n";
     gridToImage(slam_map_image, currentMap_robot_origin_frame);
@@ -343,6 +344,33 @@ int main(int argc, char **argv) {
 
         step(ts, encoderVal, lidar_scan, i, false);
     }
+
+    std::vector<std::vector<float> > scans;
+    int start_idx = 25;
+    int end_idx = 30; // Define an appropriate end index based on your data
+
+    // Ensure idx range is valid
+    if (start_idx < end_idx) {
+        for (int idx = start_idx; idx < end_idx; idx++) {
+            scans.push_back(robot_lidar_data.at(idx));
+        }
+    } else {
+        fmt::print("Invalid index range: start_idx should be less than end_idx.\n");
+        return EXIT_FAILURE;
+    }
+
+    // Assuming map, lidarObject, grid_size, and all_pose_robot_global_frame are defined and initialized
+    pose_t estimated = localize_and_estimate_pose(map, lidarObject.release(), scans, grid_size);
+
+    fmt::print("Calculated Pose: x: {}, y: {}, theta: {}\n",
+               all_pose_robot_global_frame.at(end_idx-1).x,
+               all_pose_robot_global_frame.at(end_idx-1).y,
+               all_pose_robot_global_frame.at(end_idx-1).theta);
+
+    fmt::print("Estimated Pose: x: {}, y: {}, theta: {}\n",
+               estimated.x,
+               estimated.y,
+               estimated.theta);
 
     return EXIT_SUCCESS;
 }

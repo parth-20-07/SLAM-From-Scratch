@@ -26,13 +26,7 @@ enum class cellState {
 
 typedef Eigen::Matrix<cellState, Eigen::Dynamic, Eigen::Dynamic> Grid;
 
-/**
- * @brief
- * TODO: Implement Interface to take in Sensor Data
- * TODO: Implement Functionality to use LIDAR Data with ODOM to estimate Occupancy Cell
- * TODO: Implement Loop Closure Functionality
- * TODO: Implement Interface to enable Multi-robot SLAM
- */
+
 class map_environment {
 public:
     map_environment(const float &total_grid_length_millimeters, const float &grid_cell_length_millimeters);
@@ -40,6 +34,7 @@ public:
     ~map_environment();
 
     Grid updateMap_robot_origin_frame(const std::vector<coordinate_t> &lidarScan, const pose_t &current_pose);
+
     /* --------------------------------- Getters -------------------------------- */
     [[nodiscard]] const float getGridLength() const noexcept { return this->m_totalGridLength_millimeters; }
     [[nodiscard]] const Grid &getGridMap() const noexcept { return this->m_gridMap; }
@@ -59,5 +54,10 @@ private:
     size_t m_cellCount;
     Grid m_gridMap;
 };
+
+pose_t localize_and_estimate_pose(const Grid &map, lidar_data *lidarObject,
+                                  const std::vector<std::vector<float> > &lidar_scans,
+                                  const float grid_size);
+
 
 #endif // SINGLE_ROBOT_MAPPING_H
