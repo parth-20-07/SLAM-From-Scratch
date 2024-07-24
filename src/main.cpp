@@ -345,32 +345,6 @@ int main(int argc, char **argv) {
         step(ts, encoderVal, lidar_scan, i, false);
     }
 
-    std::vector<std::vector<float> > scans;
-    int start_idx = 25;
-    int end_idx = 30; // Define an appropriate end index based on your data
-
-    // Ensure idx range is valid
-    if (start_idx < end_idx) {
-        for (int idx = start_idx; idx < end_idx; idx++) {
-            scans.push_back(robot_lidar_data.at(idx));
-        }
-    } else {
-        fmt::print("Invalid index range: start_idx should be less than end_idx.\n");
-        return EXIT_FAILURE;
-    }
-
-    // Assuming map, lidarObject, grid_size, and all_pose_robot_global_frame are defined and initialized
-    pose_t estimated = localize_and_estimate_pose(map, lidarObject.release(), scans, grid_size);
-
-    fmt::print("Calculated Pose: x: {}, y: {}, theta: {}\n",
-               all_pose_robot_global_frame.at(end_idx-1).x,
-               all_pose_robot_global_frame.at(end_idx-1).y,
-               all_pose_robot_global_frame.at(end_idx-1).theta);
-
-    fmt::print("Estimated Pose: x: {}, y: {}, theta: {}\n",
-               estimated.x,
-               estimated.y,
-               estimated.theta);
-
+    cv::waitKey(0);
     return EXIT_SUCCESS;
 }

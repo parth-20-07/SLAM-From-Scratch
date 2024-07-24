@@ -65,11 +65,11 @@ public:
     [[nodiscard]] std::vector<coordinate_t> transform_from_lidar_frame_to_robot_frame(
         const std::vector<coordinate_t> local_frame_coordinates);
 
+    const value_range_t m_angleRange_Radians; // LIDAR angle range
+    const std::size_t m_totalLidarDataPoints; // Total LIDAR data points
 
 private:
-    const std::size_t m_totalLidarDataPoints; // Total LIDAR data points
     const value_range_t m_scanDistance; // LIDAR scan distance range
-    const value_range_t m_angleRange_Radians; // LIDAR angle range
     const float m_detectionThreshold; //Threshold Value to Consider an object as obstacle
     const float m_anglePerRayIncrement_Radians;
     const pose_t m_transformation_to_robot_frame;

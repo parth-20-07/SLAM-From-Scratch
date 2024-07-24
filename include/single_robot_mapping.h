@@ -54,10 +54,4 @@ private:
     size_t m_cellCount;
     Grid m_gridMap;
 };
-
-pose_t localize_and_estimate_pose(const Grid &map, lidar_data *lidarObject,
-                                  const std::vector<std::vector<float> > &lidar_scans,
-                                  const float grid_size);
-
-
 #endif // SINGLE_ROBOT_MAPPING_H
